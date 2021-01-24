@@ -50,7 +50,7 @@
 #include "include/panel_r69006_1080p_video.h"
 #include "include/panel_r69006_1080p_cmd.h"
 #include "include/panel_truly_wuxga_video.h"
-
+#include "include/panel_nt35596_tianma_fhd_video.h"
 
 /*---------------------------------------------------------------------------*/
 /* static panel selection variable                                           */
@@ -61,6 +61,7 @@ enum {
 	R69006_1080P_VIDEO_PANEL,
 	R69006_1080P_CMD_PANEL,
 	TRULY_WUXGA_VIDEO_PANEL,
+	NT35596_TIANMA_FHD_VIDEO_PANEL,
 	UNKNOWN_PANEL
 };
 
@@ -74,6 +75,7 @@ static struct panel_list supp_panels[] = {
 	{"r69006_1080p_video", R69006_1080P_VIDEO_PANEL},
 	{"r69006_1080p_cmd", R69006_1080P_CMD_PANEL},
 	{"truly_wuxga_video", TRULY_WUXGA_VIDEO_PANEL},
+ 	{"nt35596_tianma_fhd_video", NT35596_TIANMA_FHD_VIDEO_PANEL},
 };
 
 static uint32_t panel_id;
@@ -113,7 +115,7 @@ static int init_panel_data(struct panel_struct *panelstruct,
 	switch (panel_id) {
 	case TRULY_1080P_VIDEO_PANEL:
 		panelstruct->paneldata    = &truly_1080p_video_panel_data;
-		panelstruct->paneldata->panel_with_enable_gpio = 0;
+		//panelstruct->paneldata->panel_with_enable_gpio = 0;
 		panelstruct->panelres     = &truly_1080p_video_panel_res;
 		panelstruct->color        = &truly_1080p_video_color;
 		panelstruct->videopanel   = &truly_1080p_video_video_panel;
@@ -248,6 +250,25 @@ static int init_panel_data(struct panel_struct *panelstruct,
 			truly_wuxga_14nm_video_timings, MAX_TIMING_CONFIG * sizeof(uint32_t));
 		pinfo->dfps.panel_dfps = truly_wuxga_video_dfps;
 		pinfo->mipi.signature 	= TRULY_WUXGA_VIDEO_SIGNATURE;
+		break;
+	case NT35596_TIANMA_FHD_VIDEO_PANEL:
+		panelstruct->paneldata	  = &nt35596_tianma_fhd_video_panel_data;
+		panelstruct->paneldata->panel_with_enable_gpio = 0;
+		panelstruct->panelres	  = &nt35596_tianma_fhd_video_panel_res;
+		panelstruct->color        = &nt35596_tianma_fhd_video_color;
+		panelstruct->videopanel   = &nt35596_tianma_fhd_video_video_panel;
+		panelstruct->commandpanel = &nt35596_tianma_fhd_video_command_panel;
+		panelstruct->state        = &nt35596_tianma_fhd_video_state;
+		panelstruct->laneconfig   = &nt35596_tianma_fhd_video_lane_config;
+		panelstruct->paneltiminginfo      = &nt35596_tianma_fhd_video_timing_info;
+		panelstruct->panelresetseq        = &nt35596_tianma_fhd_video_reset_seq;
+		panelstruct->backlightinfo        = &nt35596_tianma_fhd_video_backlight;
+		pinfo->mipi.panel_on_cmds         = nt35596_tianma_fhd_video_on_command;
+		pinfo->mipi.num_of_panel_on_cmds  = NT35596_TIANMA_FHD_VIDEO_ON_COMMAND;
+		pinfo->mipi.panel_off_cmds        = nt35596_tianma_fhd_video_off_command;
+		pinfo->mipi.num_of_panel_off_cmds = NT35596_TIANMA_FHD_VIDEO_OFF_COMMAND;
+		memcpy(phy_db->timing, nt35596_tianma_fhd_video_timings, MAX_TIMING_CONFIG * sizeof(uint32_t));
+		pinfo->mipi.signature 	= NT35596_TIANMA_FHD_VIDEO_SIGNATURE;
 		break;
 	case UNKNOWN_PANEL:
 	default:
