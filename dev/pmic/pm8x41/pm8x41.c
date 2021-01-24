@@ -186,6 +186,10 @@ int pm8x41_gpio_config(uint8_t gpio, struct pm8x41_gpio *config)
 		REG_WRITE(gpio_base + GPIO_DIG_OUT_CTL, val);
 	}
 
+	/* Output source sel and output invert */
+	val = config->inv_int_pol << 7;
+	REG_WRITE(gpio_base + GPIO_DIG_OUT_SRC_CTL, val);
+
 	/* Enable the GPIO */
 	val  = REG_READ(gpio_base + GPIO_EN_CTL);
 	val |= BIT(PERPH_EN_BIT);
@@ -383,6 +387,35 @@ uint32_t pm8x41_get_pwrkey_is_pressed()
 		return 1;
 	else
 		return 0;
+}
+
+void pm8953_reset_configure(uint8_t reset_type)
+{
+	/* Slave ID of pm8953 */
+	uint8_t slave_id[] = {0, 2};
+	uint8_t i;
+
+	/* disable PS_HOLD_RESET */
+	pm8xxx_reg_write(slave_id[0], PON_PS_HOLD_RESET_CTL2, 0x0);
+	pm8xxx_reg_write(slave_id[1], PON_PS_HOLD_RESET_CTL2, 0x0);
+
+	/* Delay needed for disable to kick in. */
+	udelay(300);
+
+	/* configure reset type */
+	for (i = 0; i < ARRAY_SIZE(slave_id); i++)
+		pm8xxx_reg_write(slave_id[i], PON_PS_HOLD_RESET_CTL, reset_type);
+
+	if (reset_type == PON_PSHOLD_WARM_RESET)
+	{
+		/* enable PS_HOLD_RESET */
+		for (i = 0; i < ARRAY_SIZE(slave_id); i++)
+			pm8xxx_reg_write(slave_id[i], PON_PS_HOLD_RESET_CTL2, BIT(S2_RESET_EN_BIT));
+	}
+	else
+	{
+			pm8xxx_reg_write(slave_id[0], PON_PS_HOLD_RESET_CTL2, BIT(S2_RESET_EN_BIT));
+	}
 }
 
 void pm8994_reset_configure(uint8_t reset_type)
@@ -594,6 +627,18 @@ uint8_t pm8950_get_pon_reason()
 	return pon_reason;
 }
 
+uint8_t pm8953_get_pon_reason()
+{
+	uint8_t pon_reason = 0;
+
+	pon_reason = REG_READ(SCHG_USB_INT_RT_STS|PMI8950_SLAVE_ID);
+	/* Check USBIN status on PMI and set the corresponding bits for pon */
+	pon_reason = (pon_reason & USBIN_PLUGIN_RT_STS);
+	pon_reason |= REG_READ(PON_PON_REASON1);
+
+	return pon_reason;
+}
+
 uint8_t pm8x41_get_pon_poff_reason1()
 {
 	return REG_READ(PON_POFF_REASON1);
@@ -757,4 +802,12 @@ bool pmi8994_is_battery_broken()
 	REG_WRITE(PMI8994_CHGR_TRIM_OPTIONS_7_0, REG_READ(PMI8994_CHGR_TRIM_OPTIONS_7_0) | INPUT_MISSING_POLLER_EN);
 
 	return batt_is_broken;
+}
+uint32_t pmi_get_RTC()
+{
+	uint32_t t = 0;
+	/*combine for 8 bits to one 32 bit number*/
+	for (int i = 0; i < 4; ++i)
+		t |= (((uint32_t)REG_READ(RTC_RW + i)) << (8 * i));
+	return t;
 }

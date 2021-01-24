@@ -135,6 +135,9 @@ struct pm8x41_ldo {
 #define PLDO_TYPE                             0
 #define NLDO_TYPE                             1
 
+/*RTC registers*/
+#define RTC_RW                               0x6048
+
 #define LDO(_base, _type) \
 { \
 	.type = _type, \
@@ -219,6 +222,7 @@ void pm8x41_set_boot_done();
 uint32_t pm8x41_v2_resin_status();
 uint32_t pm8x41_resin_status();
 void pm8x41_reset_configure(uint8_t);
+void pm8953_reset_configure(uint8_t);
 void pm8994_reset_configure(uint8_t);
 void pm8x41_v2_reset_configure(uint8_t);
 uint8_t pmi8950_get_pmi_subtype();
@@ -227,6 +231,7 @@ int pm8x41_ldo_control(struct pm8x41_ldo *ldo, uint8_t enable);
 uint8_t pm8x41_get_pmic_rev();
 uint8_t pm8x41_get_pon_reason();
 uint8_t pm8950_get_pon_reason();
+uint8_t pm8953_get_pon_reason();
 uint8_t pm8x41_get_pon_poff_reason1();
 uint8_t pm8x41_get_pon_poff_reason2();
 uint32_t pm8x41_get_pwrkey_is_pressed();
@@ -242,4 +247,5 @@ void pm_pwm_enable(bool enable);
 int pm_pwm_config(unsigned int duty_us, unsigned int period_us);
 uint32_t spmi_reg_read(uint32_t slave_id, uint16_t addr, uint8_t *data, uint8_t priority);
 uint32_t spmi_reg_write(uint32_t slave_id, uint16_t addr, uint8_t *data, uint8_t priority);
+uint32_t pmi_get_RTC();
 #endif

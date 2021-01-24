@@ -73,6 +73,9 @@
 #define PMIC_ARB_OWNER_ID       0
 #define TLMM_VOL_UP_BTN_GPIO    85
 
+#define PRI_PMIC_SLAVE_ID	0
+#define SEC_PMIC_SLAVE_ID	2
+
 #define FASTBOOT_MODE           0x77665500
 #define RECOVERY_MODE           0x77665502
 #define PON_SOFT_RB_SPARE       0x88F
@@ -85,6 +88,10 @@
 #define CE_READ_PIPE_LOCK_GRP   0
 #define CE_WRITE_PIPE_LOCK_GRP  0
 #define CE_ARRAY_SIZE           20
+
+#define SMBCHG_USB_RT_STS 0x21310
+#define USBIN_UV_RT_STS BIT(0)
+#define USBIN_UV_RT_STS_PM8953 BIT(2)
 
 struct mmc_device *dev;
 
@@ -194,8 +201,26 @@ uint32_t target_volume_down()
 
 uint32_t target_is_pwrkey_pon_reason()
 {
-	uint8_t pon_reason = pm8950_get_pon_reason();
-	if (pm8x41_get_is_cold_boot() && ((pon_reason == KPDPWR_N) || (pon_reason == (KPDPWR_N|PON1))))
+	uint32_t pmic = target_get_pmic();
+	uint8_t pon_reason = 0;
+	bool usb_present_sts = 1;
+
+	if (pmic == PMIC_IS_PM8953)
+	{
+		pon_reason = pm8953_get_pon_reason();
+		usb_present_sts = !(USBIN_UV_RT_STS_PM8953 &
+				pm8x41_reg_read(SMBCHG_USB_RT_STS));
+	}
+	else
+	{
+		pon_reason = pm8950_get_pon_reason();
+		usb_present_sts = !(USBIN_UV_RT_STS &
+				pm8x41_reg_read(SMBCHG_USB_RT_STS));
+	}
+	if (pm8x41_get_is_cold_boot() && ((pon_reason == KPDPWR_N) ||
+				(pon_reason == (KPDPWR_N|PON1))))
+		return 1;
+	else if ((pon_reason == PON1) && (!usb_present_sts))
 		return 1;
 	else
 		return 0;
@@ -222,23 +247,6 @@ void target_init(void)
 	dprintf(INFO, "target_init()\n");
 
 	spmi_init(PMIC_ARB_CHANNEL_NUM, PMIC_ARB_OWNER_ID);
-	if(target_is_pmi_enabled())
-	{
-		if(platform_is_msm8953())
-		{
-			uint8_t pmi_rev = 0;
-			uint32_t pmi_type = 0;
-
-			pmi_type = board_pmic_target(1) & 0xffff;
-			if(pmi_type == PMIC_IS_PMI8950)
-			{
-				/* read pmic spare register for rev */
-				pmi_rev = pmi8950_get_pmi_subtype();
-				if(pmi_rev)
-					board_pmi_target_set(1,pmi_rev);
-			}
-		}
-	}
 
 	target_keystatus();
 
@@ -250,11 +258,12 @@ void target_init(void)
 	}
 
 #if LONG_PRESS_POWER_ON
-	shutdown_detect();
+	if (target_is_pmi_enabled())
+		shutdown_detect();
 #endif
 
 #if PON_VIB_SUPPORT
-	vib_timed_turn_on(VIBRATE_TIME);
+	//vib_timed_turn_on(VIBRATE_TIME);
 #endif
 
 
@@ -367,14 +376,22 @@ int emmc_recovery_init(void)
 	return _emmc_recovery_init();
 }
 
-#define SMBCHG_USB_RT_STS 0x21310
-#define USBIN_UV_RT_STS BIT(0)
 unsigned target_pause_for_battery_charge(void)
 {
+	uint32_t pmic = target_get_pmic();
 	uint8_t pon_reason = pm8x41_get_pon_reason();
 	uint8_t is_cold_boot = pm8x41_get_is_cold_boot();
-	bool usb_present_sts = !(USBIN_UV_RT_STS &
+	bool usb_present_sts = 1;
+
+	if (target_is_pmi_enabled())
+	{
+		if (pmic == PMIC_IS_PM8953)
+			usb_present_sts = !(USBIN_UV_RT_STS_PM8953 &
 				pm8x41_reg_read(SMBCHG_USB_RT_STS));
+		else
+			usb_present_sts = !(USBIN_UV_RT_STS &
+				pm8x41_reg_read(SMBCHG_USB_RT_STS));
+	}
 	dprintf(INFO, "%s : pon_reason is:0x%x cold_boot:%d usb_sts:%d\n", __func__,
 		pon_reason, is_cold_boot, usb_present_sts);
 	/* In case of fastboot reboot,adb reboot or if we see the power key
@@ -393,6 +410,10 @@ unsigned target_pause_for_battery_charge(void)
 
 void target_uninit(void)
 {
+#if PON_VIB_SUPPORT
+	if(target_is_pmi_enabled())
+		turn_off_vib_early();
+#endif
 	mmc_put_card_to_sleep(dev);
 	sdhci_mode_disable(&dev->host);
 	if (crypto_initialized())
@@ -566,28 +587,47 @@ void target_crypto_init_params()
 	crypto_init_params(&ce_params);
 }
 
-void pmic_reset_configure(uint8_t reset_type)
-{
-	pm8994_reset_configure(reset_type);
-}
-
 uint32_t target_get_pmic()
 {
-	return PMIC_IS_PMI8950;
+	if (target_is_pmi_enabled()) {
+		uint32_t pmi_type = board_pmic_target(1) & PMIC_TYPE_MASK;
+		if (pmi_type == PMIC_IS_PM8953)
+			return PMIC_IS_PM8953;
+		else
+			return PMIC_IS_PMI8950;
+	}
+	else {
+		return PMIC_IS_UNKNOWN;
+	}
+}
+
+void pmic_reset_configure(uint8_t reset_type)
+{
+	uint32_t pmi_type;
+
+	pmi_type = target_get_pmic();
+	if (pmi_type == PMIC_IS_PM8953)
+	{
+		pm8953_reset_configure(reset_type);
+	}
 }
 
 struct qmp_reg qmp_settings[] =
 {
-	{0x804, 0x01}, /*USB3PHY_PCIE_USB3_PCS_POWER_DOWN_CONTROL */
-	{0xAC, 0x14}, /* QSERDES_COM_SYSCLK_EN_SEL */
-	{0x34, 0x08}, /* QSERDES_COM_BIAS_EN_CLKBUFLR_EN */
+	{0x804, 0x01}, /* USB3PHY_PCIE_USB3_PCS_POWER_DOWN_CONTROL */
+
+	/* Common block settings */
+	{0xAC,  0x14}, /* QSERDES_COM_SYSCLK_EN_SEL */
+	{0x34,  0x08}, /* QSERDES_COM_BIAS_EN_CLKBUFLR_EN */
 	{0x174, 0x30}, /* QSERDES_COM_CLK_SELECT */
-	{0x3C, 0x06}, /* QSERDES_COM_SYS_CLK_CTRL */
-	{0xB4, 0x00}, /* QSERDES_COM_RESETSM_CNTRL */
-	{0xB8, 0x08}, /* QSERDES_COM_RESETSM_CNTRL2 */
-	{0x194, 0x06}, /* QSERDES_COM_CMN_CONFIG */
+	{0x70,  0x0F}, /* USB3PHY_QSERDES_COM_BG_TRIM */
 	{0x19c, 0x01}, /* QSERDES_COM_SVS_MODE_CLK_SEL */
 	{0x178, 0x00}, /* QSERDES_COM_HSCLK_SEL */
+	{0x194, 0x06}, /* QSERDES_COM_CMN_CONFIG */
+	{0x48,  0x0F}, /* USB3PHY_QSERDES_COM_PLL_IVCO */
+	{0x3C,  0x02}, /* QSERDES_COM_SYS_CLK_CTRL */
+
+	/* PLL & Loop filter settings */
 	{0xd0, 0x82}, /* QSERDES_COM_DEC_START_MODE0 */
 	{0xdc, 0x55}, /* QSERDES_COM_DIV_FRAC_START1_MODE0 */
 	{0xe0, 0x55}, /* QSERDES_COM_DIV_FRAC_START2_MODE0 */
@@ -596,16 +636,15 @@ struct qmp_reg qmp_settings[] =
 	{0x84, 0x16}, /* QSERDES_COM_PLL_RCTRL_MODE0 */
 	{0x90, 0x28}, /* QSERDES_COM_PLL_CCTRL_MODE0 */
 	{0x108, 0x80}, /* QSERDES_COM_INTEGLOOP_GAIN0_MODE0 */
-	{0x10C, 0x00}, /* QSERDES_COM_INTEGLOOP_GAIN1_MODE0 */
-	{0x184, 0x0A}, /* QSERDES_COM_CORECLK_DIV */
 	{0x4c, 0x15}, /* QSERDES_COM_LOCK_CMP1_MODE0 */
 	{0x50, 0x34}, /* QSERDES_COM_LOCK_CMP2_MODE0 */
 	{0x54, 0x00}, /* QSERDES_COM_LOCK_CMP3_MODE0 */
-	{0xC8, 0x00}, /* QSERDES_COM_LOCK_CMP_EN */
 	{0x18c, 0x00}, /* QSERDES_COM_CORE_CLK_EN */
 	{0xcc, 0x00}, /* QSERDES_COM_LOCK_CMP_CFG */
 	{0x128, 0x00}, /* QSERDES_COM_VCO_TUNE_MAP */
 	{0x0C, 0x0A}, /* QSERDES_COM_BG_TIMER */
+
+	/* SSC Settings */
 	{0x10, 0x01}, /* QSERDES_COM_SSC_EN_CENTER */
 	{0x1c, 0x31}, /* QSERDES_COM_SSC_PER1 */
 	{0x20, 0x01}, /* QSERDES_COM_SSC_PER2 */
@@ -613,31 +652,24 @@ struct qmp_reg qmp_settings[] =
 	{0x18, 0x00}, /* QSERDES_COM_SSC_ADJ_PER2 */
 	{0x24, 0xde}, /* QSERDES_COM_SSC_STEP_SIZE1 */
 	{0x28, 0x07}, /* QSERDES_COM_SSC_STEP_SIZE2 */
-	{0x48, 0x0F}, /* USB3PHY_QSERDES_COM_PLL_IVCO */
-	{0x70, 0x0F}, /* USB3PHY_QSERDES_COM_BG_TRIM */
-	{0x100, 0x80}, /* QSERDES_COM_INTEGLOOP_INITVAL */
 
 	/* Rx Settings */
-	{0x440, 0x0b}, /* QSERDES_RX_UCDR_FASTLOCK_FO_GAIN */
+ 	{0x41C, 0x06}, /* QSERDES_RX_UCDR_SO_GAIN */
 	{0x4d8, 0x02}, /* QSERDES_RX_RX_EQU_ADAPTOR_CNTRL2 */
-	{0x4dc, 0x6c}, /* QSERDES_RX_RX_EQU_ADAPTOR_CNTRL3 */
-	{0x4e0, 0xbb}, /* QSERDES_RX_RX_EQU_ADAPTOR_CNTRL4 */
+	{0x4dc, 0x4c}, /* QSERDES_RX_RX_EQU_ADAPTOR_CNTRL3 */
+	{0x4e0, 0xb8}, /* QSERDES_RX_RX_EQU_ADAPTOR_CNTRL4 */
 	{0x508, 0x77}, /* QSERDES_RX_RX_EQ_OFFSET_ADAPTOR_CNTRL1 */
 	{0x50c, 0x80}, /* QSERDES_RX_RX_OFFSET_ADAPTOR_CNTRL2 */
 	{0x514, 0x03}, /* QSERDES_RX_SIGDET_CNTRL */
 	{0x51c, 0x16}, /* QSERDES_RX_SIGDET_DEGLITCH_CNTRL */
-	{0x448, 0x75}, /* QSERDES_RX_UCDR_SO_SATURATION_AND_ENABLE */
-	{0x450, 0x00}, /* QSERDES_RX_UCDR_FASTLOCK_COUNT_LOW */
-	{0x454, 0x00}, /* QSERDES_RX_UCDR_FASTLOCK_COUNT_HIGH */
-	{0x40C, 0x0a}, /* QSERDES_RX_UCDR_FO_GAIN */
-	{0x41C, 0x06}, /* QSERDES_RX_UCDR_SO_GAIN */
-	{0x510, 0x00}, /*QSERDES_RX_SIGDET_ENABLES */
+ 	{0x510, 0x0C}, /* QSERDES_RX_SIGDET_ENABLES */
 
 	/* Tx settings */
 	{0x268, 0x45}, /* QSERDES_TX_HIGHZ_TRANSCEIVEREN_BIAS_DRVR_EN */
 	{0x2ac, 0x12}, /* QSERDES_TX_RCV_DETECT_LVL_2 */
 	{0x294, 0x06}, /* QSERDES_TX_LANE_MODE */
-	{0x254, 0x00}, /* QSERDES_TX_RES_CODE_LANE_OFFSET */
+	{0x824, 0x15}, /* PCIE_USB3_PCS_TXDEEMPH_M6DB_V0 */
+	{0x828, 0x0E}, /* PCIE_USB3_PCS_TXDEEMPH_M3P5DB_V0 */
 
 	/* FLL settings */
 	{0x8c8, 0x83}, /* PCIE_USB3_PCS_FLL_CNTRL2 */
@@ -650,9 +682,7 @@ struct qmp_reg qmp_settings[] =
 	{0x880, 0xD1}, /* PCIE_USB3_PCS_LOCK_DETECT_CONFIG1 */
 	{0x884, 0x1F}, /* PCIE_USB3_PCS_LOCK_DETECT_CONFIG2 */
 	{0x888, 0x47}, /* PCIE_USB3_PCS_LOCK_DETECT_CONFIG3 */
-	{0x80C, 0x9F}, /* PCIE_USB3_PCS_TXMGN_V0 */
-	{0x824, 0x17}, /* PCIE_USB3_PCS_TXDEEMPH_M6DB_V0 */
-	{0x828, 0x0F}, /* PCIE_USB3_PCS_TXDEEMPH_M3P5DB_V0 */
+	{0x864, 0x1B}, /* PCIE_USB3_PCS_POWER_STATE_CONFIG2 */
 	{0x8B8, 0x75}, /* PCIE_USB3_PCS_RXEQTRAINING_WAIT_TIME */
 	{0x8BC, 0x13}, /* PCIE_USB3_PCS_RXEQTRAINING_RUN_TIME */
 	{0x8B0, 0x86}, /* PCIE_USB3_PCS_LFPS_TX_ECSTART_EQTLOCK */

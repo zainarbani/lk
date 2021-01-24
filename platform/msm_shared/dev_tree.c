@@ -1282,7 +1282,7 @@ int dev_tree_add_mem_info(void *fdt, uint32_t offset, uint64_t addr, uint64_t si
 
 /* Top level function that updates the device tree. */
 int update_device_tree(void *fdt, const char *cmdline,
-					   void *ramdisk, uint32_t ramdisk_size)
+					   void *ramdisk, uint32_t ramdisk_size, uint32_t pu_reason)
 {
 	int ret = 0;
 	uint32_t offset;
@@ -1364,6 +1364,15 @@ int update_device_tree(void *fdt, const char *cmdline,
 			dprintf(CRITICAL, "ERROR: Cannot update chosen node [linux,initrd-end]\n");
 			return ret;
 		}
+	}
+
+
+	/* Adding the powerup reason to the chosen node */
+	ret = fdt_setprop_u32(fdt, offset, "pureason", pu_reason);
+	if (ret)
+	{
+		dprintf(CRITICAL, "ERROR: Cannot update chosen node [pureason]\n");
+		return ret;
 	}
 
 	fdt_pack(fdt);

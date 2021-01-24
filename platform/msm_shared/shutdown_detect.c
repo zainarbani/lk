@@ -43,7 +43,7 @@
  * Set long press wait time to 500ms to benefit boot time.
  */
 #define MPM_SLEEP_TIMETICK_COUNT    0x8000
-#define PWRKEY_LONG_PRESS_COUNT     0x4000
+#define PWRKEY_LONG_PRESS_COUNT     0x4000*3
 #define QPNP_DEFAULT_TIMEOUT        250
 #define PWRKEY_DETECT_FREQUENCY     50
 

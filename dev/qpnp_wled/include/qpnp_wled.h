@@ -46,6 +46,7 @@
 #define QPNP_WLED_ILIM_REG(b)                  (b + 0x4E)
 #define QPNP_WLED_VLOOP_COMP_RES(b)            (b + 0x55)
 #define QPNP_WLED_VLOOP_COMP_GM(b)             (b + 0x56)
+#define QPNP_WLED_PSM_EN(b)                    (b + 0x5A)
 #define QPNP_WLED_PSM_CTRL(b)                  (b + 0x5B)
 #define QPNP_WLED_TEST4(b)                     (b + 0xE5)
 #define QPNP_WLED_CTRL_SPARE_REG(b)            (b + 0xDF)
@@ -177,7 +178,7 @@
 #define QPNP_WLED_SEC_UNLOCK                   0xA5
 
 #if TARGET_MAX_WLED_STRINGS
-#define QPNP_WLED_MAX_STRINGS                  TARGET_MAX_WLED_STRINGS
+#define QPNP_WLED_MAX_STRINGS                  2
 #else
 #define QPNP_WLED_MAX_STRINGS                  4
 #endif

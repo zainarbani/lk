@@ -38,6 +38,8 @@
 #include <reboot.h>
 #include <qtimer.h>
 
+extern unsigned pu_reason;
+
 #if USER_FORCE_RESET_SUPPORT
 /* Return 1 if it is a force resin triggered by user. */
 uint32_t is_user_force_reset(void)
@@ -55,6 +57,7 @@ uint32_t is_user_force_reset(void)
 }
 #endif
 
+#if !USE_PON_REBOOT_REG
 unsigned check_reboot_mode(void)
 {
 	uint32_t restart_reason = 0;
@@ -65,6 +68,7 @@ unsigned check_reboot_mode(void)
 
 	return restart_reason;
 }
+#else
 
 unsigned check_hard_reboot_mode(void)
 {
@@ -76,9 +80,27 @@ unsigned check_hard_reboot_mode(void)
 	hard_restart_reason = REG_READ(PON_SOFT_RB_SPARE);
 	REG_WRITE(PON_SOFT_RB_SPARE, hard_restart_reason & 0x03);
 
+	switch (hard_restart_reason) {
+		case KPANIC_MODE:
+			pu_reason |= RESTART_EVENT_KPANIC;
+			break;
+		case NORMAL_MODE:
+		case FASTBOOT_MODE:
+		case RECOVERY_MODE:
+		case ALARM_BOOT:
+			pu_reason |= RESTART_EVENT_NORMAL;
+			break;
+		case OTHER_MODE:
+			pu_reason |= RESTART_EVENT_OTHER;
+			break;
+		default:
+			break;
+	}
+
 	/* Extract the bits 2 to 7 and return */
-	return (hard_restart_reason & 0xFC) >> 2;
+	return (hard_restart_reason & 0xFC);
 }
+#endif
 
 /* Return true if it is triggered by alarm. */
 uint32_t check_alarm_boot(void)
@@ -112,8 +134,8 @@ void reboot_device(unsigned reboot_reason)
 	if (reboot_reason != NORMAL_DLOAD && reboot_reason != EMERGENCY_DLOAD) {
 #if USE_PON_REBOOT_REG
 		value = REG_READ(PON_SOFT_RB_SPARE);
-		value |= (reboot_reason << 2);
-		REG_WRITE(PON_SOFT_RB_SPARE, value);
+		value |= reboot_reason;
+		REG_WRITE(PON_SOFT_RB_SPARE, value & 0xFC);
 #else
 		writel(reboot_reason, RESTART_REASON_ADDR);
 #endif

@@ -94,6 +94,14 @@
 #include <display_menu.h>
 #include "fastboot_test.h"
 
+#include <pm8x41.h>
+#include <pm8x41_hw.h>
+#include <vibrator.h>
+
+#define VIBRATE_TIME 250
+#define WARM_RST 256
+unsigned pu_reason = 0;
+
 extern  bool target_use_signed_kernel(void);
 extern void platform_uninit(void);
 extern void target_uninit(void);
@@ -800,7 +808,7 @@ void boot_linux(void *kernel, unsigned *tags,
 	dprintf(INFO, "Updating device tree: start\n");
 
 	/* Update the Device Tree */
-	ret = update_device_tree((void *)tags,(const char *)final_cmdline, ramdisk, ramdisk_size);
+	ret = update_device_tree((void *)tags,(const char *)final_cmdline, ramdisk, ramdisk_size, pu_reason);
 	if(ret)
 	{
 		dprintf(CRITICAL, "ERROR: Updating Device Tree Failed \n");
@@ -4012,16 +4020,25 @@ void aboot_init(const struct app_descriptor *app)
 	}
 	if (!boot_into_fastboot)
 	{
-		if (keys_get_state(KEY_HOME) || keys_get_state(KEY_VOLUMEUP))
+		if (keys_get_state(KEY_VOLUMEUP) && !keys_get_state(KEY_VOLUMEDOWN)){
 			boot_into_recovery = 1;
-		if (!boot_into_recovery &&
-			(keys_get_state(KEY_BACK) || keys_get_state(KEY_VOLUMEDOWN)))
+        }
+		if(!keys_get_state(KEY_VOLUMEUP) && keys_get_state(KEY_VOLUMEDOWN)){
 			boot_into_fastboot = true;
+        }
 	}
 	#if NO_KEYPAD_DRIVER
 	if (fastboot_trigger())
 		boot_into_fastboot = true;
 	#endif
+
+    pu_reason = pm8x41_get_pon_reason();
+	if (pu_reason!=0x21)
+	{
+		vib_timed_turn_on(VIBRATE_TIME);
+	}
+	if (!pm8x41_get_is_cold_boot())
+		pu_reason |= WARM_RST;
 
 #if USE_PON_REBOOT_REG
 	reboot_mode = check_hard_reboot_mode();

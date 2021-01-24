@@ -58,6 +58,7 @@
 #define GPIO_MODE_CTL                         0x40
 #define GPIO_DIG_VIN_CTL                      0x41
 #define GPIO_DIG_PULL_CTL                     0x42
+#define GPIO_DIG_OUT_SRC_CTL                  0x44
 #define GPIO_DIG_OUT_CTL                      0x45
 #define GPIO_EN_CTL                           0x46
 
@@ -133,6 +134,10 @@ uint8_t pm8x41_reg_read(uint32_t addr);
 #define LDO_STEP_CTRL                         0x41
 #define LDO_POWER_MODE                        0x45
 #define LDO_EN_CTL_REG                        0x46
+
+/* USB Status registers */
+#define SCHG_USB_INT_RT_STS		      0x1310
+#define USBIN_PLUGIN_RT_STS		      BIT(4)
 
 /* USB3 phy clock */
 #define DIFF_CLK1_EN_CTL                      0x5746
